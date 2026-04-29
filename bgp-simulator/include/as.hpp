@@ -11,8 +11,9 @@ struct AS {
     std::vector<int> customers;
     std::vector<int> peers;
     Policy* policy;
+    int propagation_rank;
 
-    AS() : asn(0), policy(0) {}
+    AS() : asn(0), policy(0), propagation_rank(-1) {}
 };
 
 #endif
