@@ -1,27 +1,9 @@
-CXX      := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -g
-INCLUDES := -Iinclude
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -Wextra -g -Iinclude
+TARGET = bgp_sim
 
-SRC_DIR := src
-OBJ_DIR := build
-
-SRCS := $(wildcard $(SRC_DIR)/*.cpp)
-OBJS := $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRCS))
-
-TARGET := bgp_sim
-
-.PHONY: all clean
-
-all: $(TARGET)
-
-$(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-$(OBJ_DIR):
-	mkdir -p $(OBJ_DIR)
+all:
+    $(CXX) $(CXXFLAGS) src/*.cpp -o $(TARGET)
 
 clean:
-	rm -rf $(OBJ_DIR) $(TARGET)
+    rm -f $(TARGET)
