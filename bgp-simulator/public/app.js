@@ -6,7 +6,6 @@ const downloadBtn = document.querySelector("#downloadBtn");
 const statusEl = document.querySelector("#status");
 const errorEl = document.querySelector("#error");
 const summaryEl = document.querySelector("#summary");
-const resultsBody = document.querySelector("#resultsBody");
 const statusDot = document.querySelector("#statusDot");
 
 let simModule = null;
@@ -75,7 +74,7 @@ runBtn.addEventListener("click", async () => {
 
     const filteredRows = parseOutputCsv(rawOutput).filter((row) => Number(row.asn) === targetAsn);
 
-    renderRows(filteredRows);
+    renderGraph(filteredRows, targetAsn);
     lastFilteredCsv = buildFilteredCsv(filteredRows);
     downloadBtn.disabled = filteredRows.length === 0;
     statusEl.textContent = "Simulation completed.";
@@ -83,7 +82,7 @@ runBtn.addEventListener("click", async () => {
       ? "No announcements reached the selected ASN."
       : `${filteredRows.length} announcement(s) reached ASN ${targetAsn}.`;
   } catch (error) {
-    renderEmpty("Simulation failed.");
+    renderGraph([], targetAsn);
     showError(error.message || "Something went wrong while running the simulation.");
     statusEl.textContent = "Simulation failed.";
     statusDot.className = "status-dot error";
@@ -159,27 +158,139 @@ function buildFilteredCsv(rows) {
   return lines.join("\n");
 }
 
-function renderRows(rows) {
+function renderGraph(rows, targetAsn) {
+  const container = document.querySelector("#graph");
+  const legendEl = document.querySelector("#legend");
+  container.innerHTML = "";
+
   if (rows.length === 0) {
-    renderEmpty("No matching rows for that ASN.");
+    container.innerHTML = `<p class="empty">No matching rows for that ASN.</p>`;
+    legendEl.hidden = true;
     return;
   }
 
-  resultsBody.innerHTML = rows.map((row) => `
-    <tr>
-      <td>${escapeHtml(row.asn)}</td>
-      <td>${escapeHtml(row.prefix)}</td>
-      <td>${escapeHtml(row.asPath)}</td>
-    </tr>
-  `).join("");
+  const nodeMap = new Map();
+  const linkSet = new Set();
+  const links = [];
+
+  function ensureNode(asn) {
+    if (!nodeMap.has(asn)) nodeMap.set(asn, { id: asn, type: "transit" });
+    return nodeMap.get(asn);
+  }
+
+  for (const row of rows) {
+    const path = parseAsPath(row.asPath);
+    if (path.length === 0) continue;
+    for (let i = 0; i < path.length; i++) ensureNode(path[i]);
+    const originNode = nodeMap.get(path[path.length - 1]);
+    if (originNode.type !== "target") originNode.type = "origin";
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = Math.min(path[i], path[i + 1]);
+      const b = Math.max(path[i], path[i + 1]);
+      const key = `${a}-${b}`;
+      if (!linkSet.has(key)) {
+        linkSet.add(key);
+        links.push({ source: path[i], target: path[i + 1] });
+      }
+    }
+  }
+
+  if (nodeMap.has(targetAsn)) nodeMap.get(targetAsn).type = "target";
+
+  const nodes = Array.from(nodeMap.values());
+  const width = container.clientWidth || 700;
+  const height = 520;
+  const colorMap = { target: "#00d4ff", origin: "#4ade80", transit: "#4a6a7a" };
+
+  const svg = d3.select("#graph").append("svg")
+    .attr("viewBox", [0, 0, width, height])
+    .attr("style", "width:100%;height:100%;");
+
+  const defs = svg.append("defs");
+
+  const glowFilter = defs.append("filter").attr("id", "glow");
+  glowFilter.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
+  const merge = glowFilter.append("feMerge");
+  merge.append("feMergeNode").attr("in", "coloredBlur");
+  merge.append("feMergeNode").attr("in", "SourceGraphic");
+
+  defs.append("marker")
+    .attr("id", "arrow").attr("viewBox", "0 -5 10 10")
+    .attr("refX", 22).attr("refY", 0)
+    .attr("markerWidth", 5).attr("markerHeight", 5)
+    .attr("orient", "auto")
+    .append("path").attr("fill", "rgba(255,255,255,0.2)").attr("d", "M0,-5L10,0L0,5");
+
+  const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id((d) => d.id).distance(90).strength(0.4))
+    .force("charge", d3.forceManyBody().strength(-260))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("collision", d3.forceCollide(32));
+
+  const link = svg.append("g").selectAll("line").data(links).join("line")
+    .attr("stroke", "rgba(255,255,255,0.12)")
+    .attr("stroke-width", 1.5)
+    .attr("marker-end", "url(#arrow)");
+
+  const node = svg.append("g").selectAll("g").data(nodes).join("g")
+    .call(d3.drag()
+      .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on("end", (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+  node.append("circle")
+    .attr("r", (d) => d.type === "target" ? 20 : d.type === "origin" ? 15 : 11)
+    .attr("fill", (d) => colorMap[d.type])
+    .attr("fill-opacity", (d) => d.type === "transit" ? 0.65 : 0.9)
+    .attr("stroke", (d) => d.type === "target" ? "rgba(0,212,255,0.5)" : "rgba(255,255,255,0.08)")
+    .attr("stroke-width", (d) => d.type === "target" ? 3 : 1)
+    .attr("filter", (d) => d.type === "target" ? "url(#glow)" : null);
+
+  node.append("text")
+    .text((d) => d.id)
+    .attr("text-anchor", "middle").attr("dy", "0.35em")
+    .attr("fill", (d) => d.type === "target" ? "#001820" : "#e8f0f2")
+    .attr("font-family", "SF Mono, Fira Code, monospace")
+    .attr("font-size", (d) => d.type === "target" ? "11px" : "9px")
+    .attr("font-weight", "700")
+    .attr("pointer-events", "none");
+
+  const tooltip = d3.select("#graph").append("div").attr("class", "graph-tooltip").style("opacity", 0);
+
+  node
+    .on("mouseover", (event, d) => {
+      const prefixes = rows
+        .filter((r) => parseAsPath(r.asPath).includes(d.id))
+        .map((r) => r.prefix);
+      const prefixHtml = prefixes.length <= 5
+        ? prefixes.map((p) => `<span style="color:var(--muted)">${escapeHtml(p)}</span>`).join("<br>")
+        : `${prefixes.length} prefixes`;
+      tooltip.style("opacity", 1)
+        .html(`<strong>AS${d.id}</strong><br>${d.type} &bull; ${prefixes.length} prefix(es)<br>${prefixHtml}`)
+        .style("left", (event.offsetX + 14) + "px")
+        .style("top", (event.offsetY - 10) + "px");
+    })
+    .on("mouseout", () => tooltip.style("opacity", 0));
+
+  simulation.on("tick", () => {
+    link
+      .attr("x1", (d) => d.source.x).attr("y1", (d) => d.source.y)
+      .attr("x2", (d) => d.target.x).attr("y2", (d) => d.target.y);
+    node.attr("transform", (d) =>
+      `translate(${Math.max(22, Math.min(width - 22, d.x))},${Math.max(22, Math.min(height - 22, d.y))})`);
+  });
+
+  legendEl.hidden = false;
 }
 
-function renderEmpty(message) {
-  resultsBody.innerHTML = `
-    <tr>
-      <td colspan="3" class="empty">${escapeHtml(message)}</td>
-    </tr>
-  `;
+function parseAsPath(pathStr) {
+  return pathStr
+    .replace(/^\(|\)$/g, "")
+    .split(/,\s*/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map(Number)
+    .filter((n) => !isNaN(n));
 }
 
 function showError(message) {
