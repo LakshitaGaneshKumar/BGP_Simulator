@@ -14,19 +14,39 @@ static BGP* ensureBGP(AS& node) {
     return static_cast<BGP*>(node.policy);
 }
 
+static bool isBetterAnnouncement(const Announcement& candidate, const Announcement& stored) {
+    if (candidate.received_from != stored.received_from) {
+        return candidate.received_from > stored.received_from;
+    }
+
+    if (candidate.as_path.size() != stored.as_path.size()) {
+        return candidate.as_path.size() < stored.as_path.size();
+    }
+    
+    return candidate.next_hop_asn < stored.next_hop_asn;
+}
+
 static void processAndStoreForAS(AS& node) {
     BGP* bgp = ensureBGP(node);
 
     for (std::map<std::string, std::vector<Announcement> >::iterator it = bgp->received_queue.begin();
          it != bgp->received_queue.end(); ++it) {
+        const std::string& prefix = it->first;
         std::vector<Announcement>& incoming = it->second;
 
         for (size_t i = 0; i < incoming.size(); ++i) {
-            Announcement stored = incoming[i];
+            Announcement candidate = incoming[i];
 
-            stored.as_path.insert(stored.as_path.begin(), node.asn);
+            candidate.as_path.insert(candidate.as_path.begin(), node.asn);
 
-            bgp->installRoute(stored);
+            if (bgp->hasRoute(prefix)) {
+                Announcement stored = bgp->getRoute(prefix);
+                if (isBetterAnnouncement(candidate, stored)) {
+                    bgp->installRoute(candidate);
+                }
+            } else {
+                bgp->installRoute(candidate);
+            }
         }
     }
 
@@ -40,7 +60,6 @@ static void sendLocalRibToProviders(Graph& graph, AS& sender) {
          it != senderBGP->local_rib.end(); ++it) {
         Announcement out = it->second;
         out.next_hop_asn = sender.asn;
-
         out.received_from = FROM_CUSTOMER;
 
         for (size_t i = 0; i < sender.providers.size(); ++i) {
@@ -58,7 +77,6 @@ static void sendLocalRibToPeers(Graph& graph, AS& sender) {
          it != senderBGP->local_rib.end(); ++it) {
         Announcement out = it->second;
         out.next_hop_asn = sender.asn;
-
         out.received_from = FROM_PEER;
 
         for (size_t i = 0; i < sender.peers.size(); ++i) {
@@ -76,7 +94,6 @@ static void sendLocalRibToCustomers(Graph& graph, AS& sender) {
          it != senderBGP->local_rib.end(); ++it) {
         Announcement out = it->second;
         out.next_hop_asn = sender.asn;
-
         out.received_from = FROM_PROVIDER;
 
         for (size_t i = 0; i < sender.customers.size(); ++i) {
