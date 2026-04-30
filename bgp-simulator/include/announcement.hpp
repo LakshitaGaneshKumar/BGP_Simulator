@@ -13,6 +13,9 @@ struct Announcement {
     std::vector<int> as_path;
     int next_hop_asn;
     int received_from;
+    bool rov_invalid;
+
+    Announcement() : next_hop_asn(0), received_from(FROM_PROVIDER), rov_invalid(false) {}
 };
 
 #endif
