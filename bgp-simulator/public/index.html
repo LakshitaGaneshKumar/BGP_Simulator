@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BGP Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="page">
+
+    <section class="hero">
+      <p class="eyebrow">WebAssembly &bull; Fully Client-Side</p>
+      <h1>BGP Simulator</h1>
+      <p class="lede">
+        Simulate BGP route propagation across the full internet topology.
+        Upload an announcements CSV, enter a target ASN, and see exactly
+        which routes reach that autonomous system — all in your browser.
+      </p>
+    </section>
+
+    <div class="two-col">
+
+      <section class="panel">
+        <p class="panel-title">Inputs</p>
+
+        <div class="field">
+          <label for="annsFile">Announcements CSV</label>
+          <input id="annsFile" type="file" accept=".csv,text/csv" />
+        </div>
+
+        <div class="field">
+          <label for="rovFile">ROV ASN File <span class="label-opt">optional</span></label>
+          <input id="rovFile" type="file" accept=".csv,.txt,text/plain,text/csv" />
+        </div>
+
+        <div class="field">
+          <label for="targetAsn">Target ASN</label>
+          <input id="targetAsn" type="number" min="1" placeholder="e.g. 3356" />
+        </div>
+
+        <div class="actions">
+          <button id="runBtn" type="button" disabled>Loading WASM...</button>
+          <button id="downloadBtn" type="button" disabled>Download CSV</button>
+        </div>
+
+        <div class="hints">
+          Announcements format: <code>asn,prefix,rov_invalid</code><br />
+          Example: <code>13335,10.0.0.0/24,False</code>
+        </div>
+
+        <div class="status-bar">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="status">Initializing simulator...</span>
+        </div>
+
+        <div id="error" class="error-msg" hidden></div>
+      </section>
+
+      <section class="panel">
+        <p class="panel-title">About</p>
+        <p style="color:var(--muted);line-height:1.75;font-size:0.92rem;">
+          This simulator models the Border Gateway Protocol (BGP) using
+          real-world AS relationship data from CAIDA. It implements the
+          Gao-Rexford model — routes from customers are preferred over
+          peers, which are preferred over providers.
+          <br /><br />
+          ROV (Route Origin Validation) can be enabled per-AS to simulate
+          RPKI deployment. Marked routes are dropped by ROV-enabled ASes.
+          <br /><br />
+          The full simulation runs in WebAssembly compiled from C++, with
+          zero server-side processing.
+        </p>
+      </section>
+
+    </div>
+
+    <section class="panel results-panel">
+      <div class="results-header">
+        <h2>Simulation Results</h2>
+        <span id="summary">No simulation run yet.</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ASN</th>
+              <th>Prefix</th>
+              <th>AS Path</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr>
+              <td colspan="3" class="empty">Run a simulation to see output here.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    Simulation runs entirely client-side via WebAssembly &bull; No data leaves your browser
+  </footer>
+
+  <script src="./bgp_sim.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
