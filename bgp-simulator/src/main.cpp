@@ -2,6 +2,7 @@
 #include "graph.hpp"
 #include "../include/announcement.hpp"
 #include "../include/bgp_policy.hpp"
+#include "../include/simulator.hpp"
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -66,6 +67,9 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "Seed route not found in local RIB" << std::endl;
     }
+
+    std::vector<std::vector<int> > ranks = buildPropagationRanks(graph);
+    propagateAnnouncements(graph, ranks);
 
     return 0;
 }

@@ -12,6 +12,6 @@ struct Graph {
 Graph loadGraph(const std::string& filepath);
 bool hasCycle(const Graph& graph);
 
-std::vector<std::vector<int> > buildProgationRanks(Graph& graph);
+std::vector<std::vector<int> > buildPropagationRanks(Graph& graph);
 
 #endif

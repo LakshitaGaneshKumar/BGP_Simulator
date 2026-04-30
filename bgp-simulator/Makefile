@@ -20,4 +20,4 @@ test_cycle:
 	$(CXX) $(CXXFLAGS) src/graph_loader.cpp src/cycle_detection.cpp tests/test_cycle.cpp -o test_cycle
 
 test_propagation:
-	$(CXX) $(CXXFLAGS) tests/test_propagation.cpp -o test_propagation
+	$(CXX) $(CXXFLAGS) src/propagation_rank.cpp src/simulator.cpp src/graph_loader.cpp src/cycle_detection.cpp tests/test_propagation.cpp -o test_propagation
