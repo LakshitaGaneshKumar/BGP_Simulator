@@ -33,12 +33,16 @@ void dumpGraphToCsv(const Graph& graph, const std::string& outputPath) {
              rt != bgp->local_rib.end(); ++rt) {
             const Announcement& ann = rt->second;
 
-            out << node.asn << "," << ann.prefix << ",\"";
-            for (size_t i = 0; i < ann.as_path.size(); ++i) {
-                if (i > 0) out << " ";
-                out << ann.as_path[i];
+            out << node.asn << "," << ann.prefix << ",\"(";
+            if (ann.as_path.size() == 1) {
+                out << ann.as_path[0] << ",";
+            } else {
+                for (size_t i = 0; i < ann.as_path.size(); ++i) {
+                    if (i > 0) out << ", ";
+                    out << ann.as_path[i];
+                }
             }
-            out << "\"\n";
+            out << ")\"\n";
         }
     }
 }
