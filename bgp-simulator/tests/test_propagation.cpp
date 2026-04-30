@@ -1,5 +1,7 @@
 #include <cassert>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include "../include/graph.hpp"
 #include "../include/as.hpp"
 #include "../include/announcement.hpp"
@@ -236,6 +238,95 @@ void test_conflict_lower_next_hop() {
     std::cout << "PASS: test_conflict_lower_next_hop" << std::endl;
 }
 
+void test_csv_tiny_graph() {
+    Graph g;
+    AS a1; a1.asn = 1; a1.policy = new BGP();
+    AS a2; a2.asn = 2; a2.policy = new BGP();
+
+    a1.providers.push_back(2);
+    a2.customers.push_back(1);
+
+    g.ases[1] = a1;
+    g.ases[2] = a2;
+
+    static_cast<BGP*>(g.ases[1].policy)->installRoute(makeAnn("1.2.0.0/16", 1, FROM_CUSTOMER, {1}));
+
+    std::vector<std::vector<int> > ranks = buildPropagationRanks(g);
+    propagateAnnouncements(g, ranks);
+    dumpGraphToCsv(g, "tiny.csv");
+
+    std::ifstream in("tiny.csv");
+    std::string all((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    assert(all.find("asn,prefix,as_path") != std::string::npos);
+    assert(all.find("1,1.2.0.0/16") != std::string::npos);
+
+    delete static_cast<BGP*>(g.ases[1].policy);
+    delete static_cast<BGP*>(g.ases[2].policy);
+    std::cout << "PASS: test_csv_tiny_graph" << std::endl;
+}
+
+void test_csv_larger_graph() {
+    Graph g;
+    AS a1; a1.asn = 1; a1.policy = new BGP();
+    AS a2; a2.asn = 2; a2.policy = new BGP();
+    AS a3; a3.asn = 3; a3.policy = new BGP();
+    AS a4; a4.asn = 4; a4.policy = new BGP();
+
+    a1.providers.push_back(2);
+    a2.customers.push_back(1); a2.providers.push_back(3);
+    a3.customers.push_back(2); a3.peers.push_back(4);
+    a4.peers.push_back(3);
+
+    g.ases[1] = a1; g.ases[2] = a2; g.ases[3] = a3; g.ases[4] = a4;
+
+    static_cast<BGP*>(g.ases[1].policy)->installRoute(makeAnn("1.2.0.0/16", 1, FROM_CUSTOMER, {1}));
+
+    std::vector<std::vector<int> > ranks = buildPropagationRanks(g);
+    propagateAnnouncements(g, ranks);
+    dumpGraphToCsv(g, "large.csv");
+
+    std::ifstream in("large.csv");
+    std::string all((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    assert(all.find("1.2.0.0/16") != std::string::npos);
+
+    delete static_cast<BGP*>(g.ases[1].policy);
+    delete static_cast<BGP*>(g.ases[2].policy);
+    delete static_cast<BGP*>(g.ases[3].policy);
+    delete static_cast<BGP*>(g.ases[4].policy);
+    std::cout << "PASS: test_csv_larger_graph" << std::endl;
+}
+
+void test_two_announcements_same_prefix() {
+    Graph g;
+    AS a1; a1.asn = 1; a1.policy = new BGP();
+    AS a2; a2.asn = 2; a2.policy = new BGP();
+    AS a4; a4.asn = 4; a4.policy = new BGP();
+
+    a1.providers.push_back(4);
+    a4.customers.push_back(1);
+    a2.peers.push_back(4);
+    a4.peers.push_back(2);
+
+    g.ases[1] = a1; g.ases[2] = a2; g.ases[4] = a4;
+
+    static_cast<BGP*>(g.ases[1].policy)->installRoute(makeAnn("10.0.0.0/8", 1, FROM_CUSTOMER, {1}));
+    static_cast<BGP*>(g.ases[2].policy)->installRoute(makeAnn("10.0.0.0/8", 2, FROM_CUSTOMER, {2}));
+
+    std::vector<std::vector<int> > ranks = buildPropagationRanks(g);
+    propagateAnnouncements(g, ranks);
+
+    Announcement best = static_cast<BGP*>(g.ases[4].policy)->getRoute("10.0.0.0/8");
+    assert(best.received_from == FROM_CUSTOMER);
+    assert(best.next_hop_asn == 1);
+
+    dumpGraphToCsv(g, "conflict.csv");
+
+    delete static_cast<BGP*>(g.ases[1].policy);
+    delete static_cast<BGP*>(g.ases[2].policy);
+    delete static_cast<BGP*>(g.ases[4].policy);
+    std::cout << "PASS: test_two_announcements_same_prefix" << std::endl;
+}
+
 int main() {
     test_up_propagation();
     test_peer_propagation();
@@ -244,6 +335,9 @@ int main() {
     test_conflict_customer_beats_peer();
     test_conflict_shorter_as_path();
     test_conflict_lower_next_hop();
+    test_csv_tiny_graph();
+    test_csv_larger_graph();
+    test_two_announcements_same_prefix();
     std::cout << "All propagation tests passed." << std::endl;
     return 0;
 }

@@ -71,5 +71,11 @@ int main(int argc, char* argv[]) {
     std::vector<std::vector<int> > ranks = buildPropagationRanks(graph);
     propagateAnnouncements(graph, ranks);
 
+    std::vector<std::vector<int> > ranks = buildPropagationRanks(graph);
+    propagateAnnouncements(graph, ranks);
+
+    dumpGraphToCsv(graph, "bgp_output.csv");
+    std::cout << "Wrote bgp_output.csv" << std::endl;
+
     return 0;
 }
