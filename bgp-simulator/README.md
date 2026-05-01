@@ -1,6 +1,6 @@
 # BGP Simulator
 
-A Border Gateway Protocol (BGP) route propagation simulator built in C++ and compiled to WebAssembly for use in the browser. It models the Gao-Rexford policy framework using real CAIDA AS relationship data, supports Route Origin Validation (ROV), and visualizes the resulting AS-level routing graph with D3.js.
+A Border Gateway Protocol (BGP) route propagation simulator built in C++ and compiled to WebAssembly for use in the browser through CloudFlare Pages. It models the Gao-Rexford policy framework using real CAIDA AS relationship data, supports Route Origin Validation (ROV), and visualizes the resulting AS-level routing graph with D3.js.
 
 **Live demo:** [https://bgp-sim.lakshita1515.workers.dev](https://bgp-sim.lakshita1515.workers.dev)
 
