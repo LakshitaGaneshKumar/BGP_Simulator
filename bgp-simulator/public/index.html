@@ -1,9 +1,13 @@
 <!DOCTYPE html>
+<!-- index.html - main page for the BGP route propagation simulator
+     everything is rendered here; app.js handles all the logic
+     styles come from styles.css, the simulator itself is in bgp_sim.js (compiled wasm) -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BGP Simulator</title>
+  <!-- google fonts - Manrope for body text, Newsreader for headings -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,600;6..72,700&display=swap" rel="stylesheet" />
@@ -12,6 +16,7 @@
 <body>
   <main class="page">
 
+  <!-- hero section - just the title and a one-line description -->
     <section class="hero panel">
       <p class="eyebrow">BGP Simulator</p>
       <h1>Route Propagation</h1>
@@ -20,18 +25,22 @@
       </p>
     </section>
 
+    <!-- two-column grid: left = inputs, right = model info -->
     <div class="main-grid">
+      <!-- left panel: file uploads, asn input, run/download buttons -->
       <section class="panel">
         <div class="panel-head">
           <p class="panel-title">Simulation Inputs</p>
           <p class="panel-subtitle">Upload files, enter an ASN, and run.</p>
         </div>
 
+        <!-- announcements csv: required, must be asn,prefix,rov_invalid format -->
         <div class="field">
           <label for="annsFile">Announcements CSV</label>
           <input id="annsFile" type="file" accept=".csv,text/csv" />
         </div>
 
+        <!-- rov file: optional, lists ASNs that do ROV filtering -->
         <div class="field">
           <label for="rovFile">ROV ASN File <span class="label-opt">optional</span></label>
           <input id="rovFile" type="file" accept=".csv,.txt,text/plain,text/csv" />
@@ -42,6 +51,8 @@
           <input id="targetAsn" type="number" min="1" placeholder="e.g. 3356" />
         </div>
 
+        <!-- run button is disabled until the wasm module finishes loading
+             download button stays disabled until a simulation has been run -->
         <div class="actions">
           <button id="runBtn" type="button" disabled>Loading WASM...</button>
           <button id="downloadBtn" type="button" disabled>Download CSV</button>
@@ -51,17 +62,18 @@
           <p><strong>CSV format:</strong> <code>asn,prefix,rov_invalid</code></p>
         </div>
 
+        <!-- status bar shows loading/running/done state; aria-live so screen readers announce changes -->
         <div class="status-bar" aria-live="polite">
           <div class="status-dot" id="statusDot"></div>
           <span id="status">Initializing simulator...</span>
         </div>
 
+        <!-- error messages appear here when validation or simulation fails -->
         <div id="error" class="error-msg" hidden></div>
       </section>
 
+      <!-- right panel: brief explanation of the simulation model -->
       <section class="panel">
-        <div class="panel-head">
-          <p class="panel-title">Model</p>
           <p class="panel-subtitle">Core simulation assumptions.</p>
         </div>
         <ul class="about-list">
@@ -73,13 +85,17 @@
       </section>
     </div>
 
+    <!-- results section: d3 graph renders here after a simulation runs
+         the graph container and legend are populated by app.js -->
     <section class="panel results-panel">
       <div class="results-header">
         <h2>Route Graph</h2>
         <span id="summary">No simulation run yet.</span>
       </div>
 
+      <!-- graph-container is where d3 draws the svg -->
       <div id="graph" class="graph-container"></div>
+      <!-- legend is hidden until a simulation produces results -->
       <div class="legend" id="legend" hidden>
         <span class="legend-item" style="--dot:#5ea6ff">Target AS</span>
         <span class="legend-item" style="--dot:#5ed39a">Origin AS</span>
@@ -89,6 +105,8 @@
 
   </main>
 
+  <!-- d3 for graph rendering, bgp_sim.js is the compiled wasm module,
+       app.js is loaded as a module so it can use top-level await -->
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script src="./bgp_sim.js"></script>
   <script type="module" src="./app.js"></script>

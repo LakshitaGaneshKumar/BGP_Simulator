@@ -1,3 +1,9 @@
+// app.js - main frontend logic for the BGP simulator
+// basically this file loads the wasm module, handles file uploads,
+// runs the simulation, and draws the graph using d3
+// took forever to get the wasm loading to work but it does now
+
+// grab all the DOM elements we need up front
 const annsFileInput = document.querySelector("#annsFile");
 const rovFileInput = document.querySelector("#rovFile");
 const targetAsnInput = document.querySelector("#targetAsn");
@@ -8,15 +14,17 @@ const errorEl = document.querySelector("#error");
 const summaryEl = document.querySelector("#summary");
 const statusDot = document.querySelector("#statusDot");
 
-let simModule = null;
-let lastFilteredCsv = "";
+let simModule = null; // will be set once the wasm loads
+let lastFilteredCsv = ""; // save the last output so the download button can use it
 
-init();
+init(); // run init right away when the page loads
 
+// init - loads the wasm module when the page first opens
+// BGPSimModule comes from bgp_sim.js which emscripten generates when we compile
 async function init() {
   try {
     statusEl.textContent = "Loading simulator...";
-    simModule = await BGPSimModule();
+    simModule = await BGPSimModule(); // this is async for some reason, have to await it
     runBtn.disabled = false;
     runBtn.textContent = "Run Simulation";
     statusDot.className = "status-dot ready";
@@ -29,9 +37,16 @@ async function init() {
   }
 }
 
+// when the user clicks Run:
+// 1. validate everything
+// 2. load the as-rel file from the server
+// 3. read the uploaded csvs
+// 4. call the simulator
+// 5. filter the results and draw the graph
 runBtn.addEventListener("click", async () => {
   clearError();
 
+  // wasm might not be ready yet if the page just loaded
   if (!simModule) {
     showError("Simulator is still loading.");
     return;
@@ -42,6 +57,7 @@ runBtn.addEventListener("click", async () => {
     return;
   }
 
+  // asn has to be a positive integer, not 0 or negative or a decimal
   const targetAsn = Number(targetAsnInput.value);
   if (!Number.isInteger(targetAsn) || targetAsn <= 0) {
     showError("Please enter a valid target ASN.");
@@ -54,6 +70,8 @@ runBtn.addEventListener("click", async () => {
     statusEl.textContent = "Running simulation...";
     statusDot.className = "status-dot busy";
 
+    // fetch the as relationship data - this is the CAIDA dataset
+    // it tells us which ASes are customers/providers/peers of each other
     const asRelText = await fetch("./20260401.as-rel2.txt").then((response) => {
       if (!response.ok) {
         throw new Error("Could not load AS relationship data.");
@@ -62,20 +80,24 @@ runBtn.addEventListener("click", async () => {
     });
 
     const annsText = await annsFileInput.files[0].text();
-    const rovText = rovFileInput.files[0] ? await rovFileInput.files[0].text() : "";
+    const rovText = rovFileInput.files[0] ? await rovFileInput.files[0].text() : ""; // rov is optional
 
+    // make sure the csv is formatted correctly before we send it to the simulator
     validateAnnouncementsCsv(annsText);
 
+    // call the actual C++ simulator through wasm
+    // it returns a csv string, or starts with "ERROR:" if something went wrong
     const rawOutput = simModule.runSimulation(asRelText, annsText, rovText);
 
     if (rawOutput.startsWith("ERROR:")) {
       throw new Error(rawOutput);
     }
 
+    // only show rows for the target asn the user typed in
     const filteredRows = parseOutputCsv(rawOutput).filter((row) => Number(row.asn) === targetAsn);
 
     renderGraph(filteredRows, targetAsn);
-    lastFilteredCsv = buildFilteredCsv(filteredRows);
+    lastFilteredCsv = buildFilteredCsv(filteredRows); // save for download
     downloadBtn.disabled = filteredRows.length === 0;
     statusEl.textContent = "Simulation completed.";
     summaryEl.textContent = filteredRows.length === 0
@@ -107,39 +129,49 @@ downloadBtn.addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
+// checks that the announcements csv looks right before we run the simulation
+// the C++ side is pretty strict about the format so we catch bad files early
+// expected: asn,prefix,rov_invalid as the header, then data rows
 function validateAnnouncementsCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) {
     throw new Error("Announcements CSV must include a header and at least one data row.");
   }
 
+  // has to be exactly this, the c++ parser doesn't handle anything else
   const header = lines[0].trim().toLowerCase();
   if (header !== "asn,prefix,rov_invalid") {
     throw new Error("Announcements CSV header must be exactly: asn,prefix,rov_invalid");
   }
 }
 
+// parses the csv output from the simulator into a list of row objects
+// can't just do line.split(",") because the as_path column has commas inside it
+// e.g.: 701,1.2.3.0/24,"(701,3356,15169)" - that middle quoted part breaks naive splitting
+// so instead we manually find the first two commas and slice from there
 function parseOutputCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   const rows = [];
 
-  for (let i = 1; i < lines.length; i += 1) {
+  for (let i = 1; i < lines.length; i += 1) { // start at 1 to skip header
     const line = lines[i];
     if (!line) {
       continue;
     }
 
+    // find the first two commas manually
     const firstComma = line.indexOf(",");
     const secondComma = line.indexOf(",", firstComma + 1);
 
     if (firstComma === -1 || secondComma === -1) {
-      continue;
+      continue; // skip malformed lines
     }
 
     const asn = line.slice(0, firstComma);
     const prefix = line.slice(firstComma + 1, secondComma);
     let asPath = line.slice(secondComma + 1).trim();
 
+    // remove surrounding quotes if there are any
     if (asPath.startsWith("\"") && asPath.endsWith("\"")) {
       asPath = asPath.slice(1, -1);
     }
@@ -150,6 +182,8 @@ function parseOutputCsv(text) {
   return rows;
 }
 
+// takes the filtered rows and converts them back into a csv string for download
+// need to quote the as_path since it has commas in it
 function buildFilteredCsv(rows) {
   const lines = ["asn,prefix,as_path"];
   for (const row of rows) {
@@ -158,10 +192,17 @@ function buildFilteredCsv(rows) {
   return lines.join("\n");
 }
 
+// renders the simulation results as a force-directed graph using d3
+// each node is an AS number, edges connect ASes that are adjacent in a path
+// node colors:
+//   blue  = the target ASN the user searched for
+//   green = origin AS (where the route was announced from)
+//   gray  = transit AS (just passing the route along)
+// TODO: maybe add a way to highlight a specific prefix?
 function renderGraph(rows, targetAsn) {
   const container = document.querySelector("#graph");
   const legendEl = document.querySelector("#legend");
-  container.innerHTML = "";
+  container.innerHTML = ""; // clear the old graph first
 
   if (rows.length === 0) {
     container.innerHTML = `<p class="empty">No matching rows for that ASN.</p>`;
@@ -169,22 +210,25 @@ function renderGraph(rows, targetAsn) {
     return;
   }
 
-  const nodeMap = new Map();
-  const linkSet = new Set();
+  const nodeMap = new Map(); // asn -> node, so we don't create duplicates
+  const linkSet = new Set(); // keep track of edges we've already added
   const links = [];
 
+  // small helper so we don't have to keep checking if a node exists
   function ensureNode(asn) {
     if (!nodeMap.has(asn)) nodeMap.set(asn, { id: asn, type: "transit" });
     return nodeMap.get(asn);
   }
 
+  // go through each row and build up all the nodes and edges
   for (const row of rows) {
     const path = parseAsPath(row.asPath);
     if (path.length === 0) continue;
     for (let i = 0; i < path.length; i++) ensureNode(path[i]);
-    const originNode = nodeMap.get(path[path.length - 1]);
+    const originNode = nodeMap.get(path[path.length - 1]); // last AS in path = origin
     if (originNode.type !== "target") originNode.type = "origin";
     for (let i = 0; i < path.length - 1; i++) {
+      // store edge keys as "smaller-larger" so we don't add the same edge twice
       const a = Math.min(path[i], path[i + 1]);
       const b = Math.max(path[i], path[i + 1]);
       const key = `${a}-${b}`;
@@ -195,9 +239,11 @@ function renderGraph(rows, targetAsn) {
     }
   }
 
+  // mark the target node last so origin nodes don't accidentally overwrite it
   if (nodeMap.has(targetAsn)) nodeMap.get(targetAsn).type = "target";
 
   const nodes = Array.from(nodeMap.values());
+  // set size and font based on node type - target is biggest
   for (const node of nodes) {
     if (node.type === "target") {
       node.radius = 26;
@@ -210,6 +256,7 @@ function renderGraph(rows, targetAsn) {
       node.labelSize = 11;
     }
 
+    // shrink text a little if the asn has a lot of digits so it fits in the circle
     const digits = String(node.id).length;
     if (digits >= 5) node.labelSize -= 2;
     else if (digits === 4) node.labelSize -= 1;
@@ -231,6 +278,11 @@ function renderGraph(rows, targetAsn) {
     .attr("orient", "auto")
     .append("path").attr("fill", "rgba(149,165,184,0.42)").attr("d", "M0,-5L10,0L0,5");
 
+  // d3 force simulation - the forces kind of work like physics
+  // forceLink = connected nodes attract each other
+  // forceManyBody = all nodes repel each other (negative = repulsion)
+  // forceCenter = pulls everything to the middle so it doesn't drift off screen
+  // forceCollide = stops nodes from sitting on top of each other
   const simulation = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(links).id((d) => d.id).distance(120).strength(0.33))
     .force("charge", d3.forceManyBody().strength(-380))
@@ -284,6 +336,8 @@ function renderGraph(rows, targetAsn) {
     })
     .on("mouseout", () => tooltip.style("opacity", 0));
 
+  // every tick the simulation updates positions - we also clamp x/y
+  // so nodes don't get dragged out of the visible area
   simulation.on("tick", () => {
     link
       .attr("x1", (d) => d.source.x).attr("y1", (d) => d.source.y)
@@ -299,21 +353,25 @@ function renderGraph(rows, targetAsn) {
   legendEl.hidden = false;
 }
 
+// converts something like "(701,3356,15169)" into [701, 3356, 15169]
+// strips the parentheses and splits on commas, then converts to numbers
 function parseAsPath(pathStr) {
   return pathStr
-    .replace(/^\(|\)$/g, "")
+    .replace(/^\(|\)$/g, "") // strip outer parens
     .split(/,\s*/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .map(Number)
-    .filter((n) => !isNaN(n));
+    .filter((n) => !isNaN(n)); // filter out anything that didn't parse right
 }
 
+// shows an error message on the page
 function showError(message) {
   errorEl.hidden = false;
   errorEl.textContent = message;
 }
 
+// hides the error message - called before each run so old errors go away
 function clearError() {
   errorEl.hidden = true;
   errorEl.textContent = "";
