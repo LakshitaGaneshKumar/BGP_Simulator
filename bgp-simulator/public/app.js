@@ -198,38 +198,48 @@ function renderGraph(rows, targetAsn) {
   if (nodeMap.has(targetAsn)) nodeMap.get(targetAsn).type = "target";
 
   const nodes = Array.from(nodeMap.values());
-  const width = container.clientWidth || 700;
-  const height = 520;
-  const colorMap = { target: "#00d4ff", origin: "#4ade80", transit: "#4a6a7a" };
+  for (const node of nodes) {
+    if (node.type === "target") {
+      node.radius = 26;
+      node.labelSize = 13;
+    } else if (node.type === "origin") {
+      node.radius = 20;
+      node.labelSize = 12;
+    } else {
+      node.radius = 16;
+      node.labelSize = 11;
+    }
+
+    const digits = String(node.id).length;
+    if (digits >= 5) node.labelSize -= 2;
+    else if (digits === 4) node.labelSize -= 1;
+  }
+
+  const width = container.clientWidth || 900;
+  const height = container.clientHeight || 640;
+  const colorMap = { target: "#5ea6ff", origin: "#5ed39a", transit: "#95a5b8" };
 
   const svg = d3.select("#graph").append("svg")
     .attr("viewBox", [0, 0, width, height])
     .attr("style", "width:100%;height:100%;");
 
   const defs = svg.append("defs");
-
-  const glowFilter = defs.append("filter").attr("id", "glow");
-  glowFilter.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
-  const merge = glowFilter.append("feMerge");
-  merge.append("feMergeNode").attr("in", "coloredBlur");
-  merge.append("feMergeNode").attr("in", "SourceGraphic");
-
   defs.append("marker")
     .attr("id", "arrow").attr("viewBox", "0 -5 10 10")
     .attr("refX", 22).attr("refY", 0)
     .attr("markerWidth", 5).attr("markerHeight", 5)
     .attr("orient", "auto")
-    .append("path").attr("fill", "rgba(255,255,255,0.2)").attr("d", "M0,-5L10,0L0,5");
+    .append("path").attr("fill", "rgba(149,165,184,0.42)").attr("d", "M0,-5L10,0L0,5");
 
   const simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id((d) => d.id).distance(90).strength(0.4))
-    .force("charge", d3.forceManyBody().strength(-260))
+    .force("link", d3.forceLink(links).id((d) => d.id).distance(120).strength(0.33))
+    .force("charge", d3.forceManyBody().strength(-380))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collision", d3.forceCollide(32));
+    .force("collision", d3.forceCollide((d) => d.radius + 10));
 
   const link = svg.append("g").selectAll("line").data(links).join("line")
-    .attr("stroke", "rgba(255,255,255,0.12)")
-    .attr("stroke-width", 1.5)
+    .attr("stroke", "rgba(149,165,184,0.35)")
+    .attr("stroke-width", 1.25)
     .attr("marker-end", "url(#arrow)");
 
   const node = svg.append("g").selectAll("g").data(nodes).join("g")
@@ -239,20 +249,22 @@ function renderGraph(rows, targetAsn) {
       .on("end", (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
 
   node.append("circle")
-    .attr("r", (d) => d.type === "target" ? 20 : d.type === "origin" ? 15 : 11)
+    .attr("r", (d) => d.radius)
     .attr("fill", (d) => colorMap[d.type])
-    .attr("fill-opacity", (d) => d.type === "transit" ? 0.65 : 0.9)
-    .attr("stroke", (d) => d.type === "target" ? "rgba(0,212,255,0.5)" : "rgba(255,255,255,0.08)")
-    .attr("stroke-width", (d) => d.type === "target" ? 3 : 1)
-    .attr("filter", (d) => d.type === "target" ? "url(#glow)" : null);
+    .attr("fill-opacity", (d) => d.type === "transit" ? 0.8 : 0.96)
+    .attr("stroke", "rgba(16,23,31,0.95)")
+    .attr("stroke-width", (d) => d.type === "target" ? 2.4 : 1.15);
 
   node.append("text")
     .text((d) => d.id)
     .attr("text-anchor", "middle").attr("dy", "0.35em")
-    .attr("fill", (d) => d.type === "target" ? "#001820" : "#e8f0f2")
+    .attr("fill", "#ffffff")
     .attr("font-family", "SF Mono, Fira Code, monospace")
-    .attr("font-size", (d) => d.type === "target" ? "11px" : "9px")
-    .attr("font-weight", "700")
+    .attr("font-size", (d) => `${d.labelSize}px`)
+    .attr("font-weight", "800")
+    .attr("paint-order", "stroke")
+    .attr("stroke", "rgba(0,0,0,0.35)")
+    .attr("stroke-width", "1.5px")
     .attr("pointer-events", "none");
 
   const tooltip = d3.select("#graph").append("div").attr("class", "graph-tooltip").style("opacity", 0);
@@ -263,7 +275,7 @@ function renderGraph(rows, targetAsn) {
         .filter((r) => parseAsPath(r.asPath).includes(d.id))
         .map((r) => r.prefix);
       const prefixHtml = prefixes.length <= 5
-        ? prefixes.map((p) => `<span style="color:var(--muted)">${escapeHtml(p)}</span>`).join("<br>")
+        ? prefixes.map((p) => `<span style="color:#9fb1c4">${escapeHtml(p)}</span>`).join("<br>")
         : `${prefixes.length} prefixes`;
       tooltip.style("opacity", 1)
         .html(`<strong>AS${d.id}</strong><br>${d.type} &bull; ${prefixes.length} prefix(es)<br>${prefixHtml}`)
@@ -276,8 +288,12 @@ function renderGraph(rows, targetAsn) {
     link
       .attr("x1", (d) => d.source.x).attr("y1", (d) => d.source.y)
       .attr("x2", (d) => d.target.x).attr("y2", (d) => d.target.y);
-    node.attr("transform", (d) =>
-      `translate(${Math.max(22, Math.min(width - 22, d.x))},${Math.max(22, Math.min(height - 22, d.y))})`);
+    node.attr("transform", (d) => {
+      const edgePadding = d.radius + 6;
+      const x = Math.max(edgePadding, Math.min(width - edgePadding, d.x));
+      const y = Math.max(edgePadding, Math.min(height - edgePadding, d.y));
+      return `translate(${x},${y})`;
+    });
   });
 
   legendEl.hidden = false;
